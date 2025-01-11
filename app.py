@@ -1,56 +1,88 @@
 import streamlit as st
 import os
-from dotenv import load_dotenv
-import google.generativeai as genai
 
-# Load environment variables from a .env file
-load_dotenv()
+# Try importing dotenv and handle the case where it is missing
+try:
+    from dotenv import load_dotenv
+    # Load environment variables from a .env file
+    load_dotenv()
+except ModuleNotFoundError:
+    st.error("Required module 'dotenv' not found. Please install it using 'pip install python-dotenv'.")
+    st.stop()
+
+# Try importing google.generativeai and handle errors if the module is missing
+try:
+    import google.generativeai as genai
+except ModuleNotFoundError:
+    st.error("Required module 'google-generativeai' not found. Please install it using 'pip install google-generativeai'.")
+    st.stop()
+
+# Get the API key from environment variables
+api_key = os.getenv("GOOGLE_API_KEY")
+if not api_key:
+    st.error("GOOGLE_API_KEY is not set. Please add it to your environment variables or .env file.")
+    st.stop()
 
 # Configure the Google Generative AI with the API key
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+genai.configure(api_key=api_key)
 
-# Function to create a Gemini Pro model
-model = genai.GenerativeModel("gemini-pro")
-chat = model.start_chat(history=[])
+# Create a Gemini Pro model instance
+try:
+    model = genai.GenerativeModel("gemini-pro")
+    chat = model.start_chat(history=[])
+except Exception as e:
+    st.error(f"Failed to initialize the Generative AI model: {e}")
+    st.stop()
 
+# Function to get a response from the Gemini Pro model
 def get_gemini_response(question):
-    response = chat.send_message(question, stream=True)
-    return response
+    try:
+        response = chat.send_message(question, stream=True)
+        return response
+    except Exception as e:
+        st.error(f"Error communicating with the Generative AI: {e}")
+        return []
 
-# Set page configuration as the first Streamlit command
+# Set Streamlit page configuration
 st.set_page_config(page_title="Recipe Generator AI", layout="wide")
 
-# Load custom CSS
+# Function to load custom CSS
 def local_css(file_name):
-    with open(file_name) as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    if os.path.exists(file_name):
+        with open(file_name) as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    else:
+        st.warning(f"CSS file '{file_name}' not found.")
 
+# Uncomment if you have a custom CSS file
 # local_css("styles1.css")
 
 st.header("Recipe Generator AI")
 
-# Initialize the session state for the chat history if it doesn't exist
+# Initialize chat history in session state
 if "chat_history" not in st.session_state:
     st.session_state["chat_history"] = []
 
-# Text area for user input
-input = st.text_area("Enter the ingredients you have:", key="input")
+# Input field for user ingredients
+user_input = st.text_area("Enter the ingredients you have:", key="input")
 
-# Button to submit the ingredients
-submit = st.button("Generate Recipe")
-
-if submit and input:
-    prompt = f"Generate a recipe using the following ingredients: {input}"
+# Button to generate a recipe
+if st.button("Generate Recipe") and user_input:
+    prompt = f"Generate a recipe using the following ingredients: {user_input}"
     response = get_gemini_response(prompt)
-    # Add user query and response to session chat history
-    st.session_state["chat_history"].append(("You", input))
-    
-    st.subheader("Generated Recipe:")
-    response_text = ""
-    for chunk in response:
-        response_text += chunk.text
-    st.markdown(f'<div class="response">{response_text}</div>', unsafe_allow_html=True)
-    st.session_state["chat_history"].append(("Bot", response_text))
+
+    # Display the generated recipe
+    if response:
+        st.subheader("Generated Recipe:")
+        response_text = ""
+        for chunk in response:
+            response_text += chunk.text
+        st.markdown(f'<div class="response">{response_text}</div>', unsafe_allow_html=True)
+        # Update session chat history
+        st.session_state["chat_history"].append(("You", user_input))
+        st.session_state["chat_history"].append(("Bot", response_text))
+    else:
+        st.error("No response generated. Please try again later.")
 
 # Display chat history
 st.subheader("Chat History")
